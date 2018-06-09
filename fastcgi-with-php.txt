@@ -1,0 +1,139 @@
+To create the FastCGI application process pool, run the following command:
+C:\>%windir%\system32\inetsrv\appcmd set config /section:system.webServer/fastCGI 
+/+[fullPath='c:\{php_folder}\php-cgi.exe']
+After that, create the handler mapping:
+C:\>%windir%\system32\inetsrv\appcmd set config /section:system.webServer/handlers 
+/+[name='PHP_via_FastCGI',path='*.php',verb='*',modules='FastCgiModule',
+scriptProcessor='c:\{php_folder}\php-cgi.exe',resourceType='Either']
+
+PHP Process Recycling Behavior
+C:\>%windir%\system32\inetsrv\appcmd set config -section:system.webServer/fastCgi 
+/[fullPath='c:\{php_folder}\php-cgi.exe'].instanceMaxRequests:10000
+
+C:\>%windir%\system32\inetsrv\appcmd set config -section:system.webServer/fastCgi 
+/+[fullPath='c:\{php_folder}\php-cgi.exe'].environmentVariables.[name=’PHP_FCGI_MAX_REQUESTS’, 
+value='10000']
+
+PHP Versioning
+C:\>%windir%\system32\inetsrv\appcmd set config /section:system.webServer/fastCGI 
+/+[fullPath='c:\php448\php.exe']
+
+C:\>%windir%\system32\inetsrv\appcmd set config /section:system.webServer/fastCGI 
+/+[fullPath='c:\php521\php-cgi.exe']
+
+C:\>%windir%\system32\inetsrv\appcmd set config /section:system.webServer/fastCGI 
+/+[fullPath='c:\php525nts\php-cgi.exe']
+
+
+Now, if you have 3 web sites (site1, site2, site3), where each site needs to use a different 
+PHP version, you can define handler mappings on each of those sites to reference a corresponding 
+FastCGI application process pool.
+C:\>%windir%\system32\inetsrv\appcmd set config site1 –section:system.webServer/handlers 
+/+"..[name=’PHP448_via_FastCGI’,path=’*.php’,verb=’*’,modules=’FastCgiModule’,
+scriptProcessor=’c:\php448\php.exe’,resourceType=’Either’]
+
+C:\>%windir%\system32\inetsrv\appcmd set config site2 –section:system.webServer/handlers 
+/+"..[name=’PHP521_via_FastCGI’,path=’*.php’,verb=’*’,modules=’FastCgiModule’,
+scriptProcessor=’c:\php521\php-cgi.exe’,resourceType=’Either’]
+
+C:\>%windir%\system32\inetsrv\appcmd set config site3 –section:system.webServer/handlers 
+/+"..[name=’PHP525nts_via_FastCGI’,path=’*.php’,verb=’*’,modules=’FastCgiModule’,
+scriptProcessor=’c:\php525nts\php-cgi.exe’,resourceType=’Either’]
+
+PHP Security Recommendations
+To make the recommended changes locate and open php.ini file and edit it as described below:
+1) Disable remote URL's for file handling functions:
+
+Set allow_url_fopen=Off
+Set allow_url_include=Off
+2) Disable register_globals:
+
+register_globals=Off
+3) Restrict where PHP can read and write on a file system, e.g.:
+
+open_basedir="c:\inetpub"
+4) Disable safe mode:
+
+safe_mode=Off
+safe_mode_gid=Off
+5) Limit script execution time:
+
+max_execution_time=30
+max_input_time=60
+6) Limit memory usage and file sizes:
+
+memory_limit=16M
+upload_max_filesize=2M
+post_max_size=8M
+max_input_nesting_levels=64
+7) Configure error messages and logging:
+
+display_errors=Off
+log_errors=On
+error_log="C:\path\of\your\choice"
+8) Hide presence of PHP:
+
+expose_php=Off
+
+
+Enabling per-site PHP configuration
+Per-site PHP process pools
+When each web site has its own application pool (which is a recommended practice for 
+shared hosting on IIS 7.0), it is possible to associate a dedicated FastCGI process 
+pool with each web site. A FastCGI process pool is uniquely identified by the 
+combination of fullPath and arguments attributes. So, if it is necessary to create 
+several FastCGI process pools for the same process executable, such as php-cgi.exe, 
+the arguments attribute can be used to make process pools unique. In addition, 
+with php-cgi.exe processes the command line switch "-d" can be used to define an 
+INI entry for PHP process. This switch can be used to set some fake PHP setting that 
+makes the arguments string unique.
+
+For example, if there are two web sites "website1" and "website2" that need to have 
+their own set of PHP settings, the FastCGI process pools can be defined as follows:
+
+<fastCgi>
+    <application fullPath="C:\PHP\php-cgi.exe" arguments="-d my.website=website1" />
+    <application fullPath="C:\PHP\php-cgi.exe" arguments="-d my.website=website2" />
+</fastCgi>
+
+Then website1 can have the PHP handler mapping as follows:
+<system.webServer>
+    <handlers accessPolicy="Read, Script"> 
+        <add name="PHP via FastCGI" path="*.php" verb="*" modules="FastCgiModule" scriptProcessor="C:\PHP\php-cgi.exe|-d my.website=website1" resourceType="Unspecified" requireAccess="Script" />
+    </handlers>
+</system.webServer>
+and website2 can have the PHP handler mapping as follows:
+<system.webServer>
+    <handlers accessPolicy="Read, Script"> 
+        <add name="PHP via FastCGI" path="*.php" verb="*" modules="FastCgiModule" scriptProcessor="C:\PHP\php-cgi.exe|-d my.website=website2" resourceType="Unspecified" requireAccess="Script" />
+    </handlers>
+</system.webServer>
+
+
+Specifying php.ini location
+When PHP process starts it determines the location of configuration php.ini file 
+by using various settings. The PHP documentation provides detailed description of 
+the PHP start up process. Note that one of the places where PHP process searches 
+for php.ini location is the PHPRC environment variable. If PHP process finds a 
+php.ini file in the path specified in this environment variable then it will use it, 
+otherwise it will revert to default location of php.ini. This environment variable 
+can be used to allow hosting customers to use their own versions of php.ini files.
+
+For example if there are two websites: website1 and website2; located at the following 
+file paths: C:\WebSites\website1 and C:\WebSites\website2 then the php-cgi.exe process 
+pools in <fastCgi> section of applicationHost.config can be configured as below:
+
+<fastCgi>
+    <application fullPath="C:\PHP\php-cgi.exe" arguments="-d my.website=website1">
+        <environmentVariables>
+            <environmentVariable name="PHPRC" value="C:\WebSites\website1" />
+        </environmentVariables>
+    </application>
+    <application fullPath="C:\PHP\php-cgi.exe" arguments="-d my.website=website2">
+        <environmentVariables>
+            <environmentVariable name="PHPRC" value="C:\WebSites\website2" />
+        </environmentVariables>
+    </application>
+</fastCgi>
+
+
